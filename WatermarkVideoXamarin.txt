@@ -1,0 +1,110 @@
+try {
+
+            var videoAsset = AVUrlAsset.FromUrl (new NSUrl (filepath, false)) as AVUrlAsset;
+            AVMutableComposition mixComposition = AVMutableComposition.Create ();
+            var compositionVideoTracks = mixComposition.AddMutableTrack (AVMediaType.Video, 0);
+            AVAssetTrack clipVideoTrack = videoAsset.TracksWithMediaType (AVMediaType.Video) [0];
+            var compositionAudioTrack = mixComposition.AddMutableTrack (AVMediaType.Audio, 0);
+            AVAssetTrack clipAudioTrack = videoAsset.TracksWithMediaType (AVMediaType.Audio) [0];
+
+            NSError error;
+            CMTimeRange timeRangeInAsset = new CMTimeRange ();
+            timeRangeInAsset.Start = CMTime.Zero;
+            timeRangeInAsset.Duration = videoAsset.Duration;
+            compositionVideoTracks.InsertTimeRange (timeRangeInAsset, clipVideoTrack, CMTime.Zero, out error);
+	    compositionAudioTrack.InsertTimeRange (timeRangeInAsset, clipAudioTrack, CMTime.Zero, out error);
+	    compositionVideoTracks.PreferredTransform = clipVideoTrack.PreferredTransform;
+
+            CGSize sizeOfVideo = videoAsset.NaturalSize;
+
+            CATextLayer textOfvideo = (CATextLayer)CATextLayer.Create ();
+            textOfvideo.String = String.Format ("{0} {1}", DateTime.Now.ToLongTimeString (), "Test app");
+            textOfvideo.SetFont (CGFont.CreateWithFontName ("Helvetica"));
+            textOfvideo.FontSize = 50;
+            textOfvideo.AlignmentMode = CATextLayer.AlignmentCenter;
+            textOfvideo.Frame = new CGRect (0, 0, sizeOfVideo.Width, sizeOfVideo.Height / 6);
+            textOfvideo.ForegroundColor = new CGColor (255, 0, 0);
+
+            UIImage myImage = UIImage.FromFile ("Icon-Small.png");
+            CALayer layerCa = CALayer.Create ();
+            layerCa.Contents = myImage.CGImage;
+            layerCa.Frame = new CGRect (0, 0, 100, 100);
+            layerCa.Opacity = 0.65F;
+
+            CALayer optionalLayer = CALayer.Create ();
+            optionalLayer.AddSublayer (textOfvideo);
+            optionalLayer.Frame = new CGRect (0, 0, sizeOfVideo.Width, sizeOfVideo.Height);
+            optionalLayer.MasksToBounds = true;
+
+            CALayer parentLayer = CALayer.Create ();
+            CALayer videoLayer = CALayer.Create ();
+            parentLayer.Frame = new CGRect (0, 0, sizeOfVideo.Width, sizeOfVideo.Height);
+            videoLayer.Frame = new CGRect (0, 0, sizeOfVideo.Width, sizeOfVideo.Height);
+            parentLayer.AddSublayer (videoLayer);
+            parentLayer.AddSublayer (layerCa);
+            parentLayer.AddSublayer (textOfvideo);
+
+            AVMutableVideoComposition videoComposition = AVMutableVideoComposition.Create ();
+            videoComposition.RenderSize = sizeOfVideo;
+            videoComposition.FrameDuration = new CMTime (1, 30);
+            videoComposition.AnimationTool = AVVideoCompositionCoreAnimationTool.FromLayer (videoLayer, parentLayer);
+
+            AVMutableVideoCompositionInstruction instruction = AVMutableVideoCompositionInstruction.Create () as AVMutableVideoCompositionInstruction;
+            CMTimeRange timeRangeInstruction = new CMTimeRange ();
+            timeRangeInstruction.Start = CMTime.Zero;
+            timeRangeInstruction.Duration = mixComposition.Duration;
+            instruction.TimeRange = timeRangeInstruction;
+            AVAssetTrack videoTrack = mixComposition.TracksWithMediaType (AVMediaType.Video) [0];
+
+            AVMutableVideoCompositionLayerInstruction layerInstruction = AVMutableVideoCompositionLayerInstruction.FromAssetTrack (videoTrack);
+            instruction.LayerInstructions = new AVVideoCompositionLayerInstruction[] { layerInstruction };
+            List<AVVideoCompositionInstruction> instructions = new List<AVVideoCompositionInstruction> ();
+            instructions.Add (instruction);
+            videoComposition.Instructions = instructions.ToArray ();
+
+            var exportSession = new AVAssetExportSession (mixComposition, AVAssetExportSession.PresetMediumQuality);
+            exportSession.VideoComposition = videoComposition;
+
+            Console.WriteLine ("Original path is {0}", filepath);
+            string newFileName = Path.GetFileName (filepath);
+            newFileName = newFileName.Replace (".mp4", "_wm.mp4");
+            string directoryName = Path.GetDirectoryName (filepath);
+            string videoOutFilePath = Path.Combine (directoryName, newFileName);
+            Console.WriteLine ("New path is {0}", videoOutFilePath);
+
+            exportSession.OutputFileType = AVFileType.Mpeg4;
+            exportSession.OutputUrl = NSUrl.FromFilename (videoOutFilePath);
+            exportSession.ShouldOptimizeForNetworkUse = true;
+            exportSession.ExportAsynchronously (() => {
+                AVAssetExportSessionStatus status = exportSession.Status;
+                Console.WriteLine ("Done with handler. Status: " + status.ToString ());
+                switch (status) {
+                case AVAssetExportSessionStatus.Completed:
+                    Console.WriteLine ("Sucessfully Completed");
+                    if (File.Exists (videoOutFilePath)) {
+                        Console.WriteLine ("Created!!");
+                    } else
+                        Console.WriteLine ("Failed");
+                    break;
+                case AVAssetExportSessionStatus.Cancelled:
+                    break;
+                case AVAssetExportSessionStatus.Exporting:
+                    break;
+                case AVAssetExportSessionStatus.Failed:
+                    Console.WriteLine ("Task failed => {0}", exportSession.Error);
+                    Console.WriteLine (exportSession.Error.Description);
+                    break;
+                case AVAssetExportSessionStatus.Unknown:
+                    break;
+                case AVAssetExportSessionStatus.Waiting:
+                    break;
+                default:
+                    break;
+                }
+            });
+
+            if (File.Exists (videoOutFilePath))
+                return videoOutFilePath;
+        } catch (Exception ex) {
+            Console.WriteLine ("Error occured : {0}", ex.Message);
+        }
